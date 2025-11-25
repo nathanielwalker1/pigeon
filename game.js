@@ -26,7 +26,7 @@ const BACKGROUND = {
     IMAGE_PATH: 'assets/westvillage.jpg',  // Path to background image (easy to swap for testing)
     PARALLAX_FACTOR: 0.5,                  // How much background moves relative to camera (0.5 = half speed)
     SCALE: 1.0,                            // Scale factor for background image (1.0 = normal size)
-    CONSTANT_SCROLL_SPEED: 100             // Constant background scroll speed (pixels/second) - independent of bird speed
+    CONSTANT_SCROLL_SPEED: 130,             // Constant background scroll speed (pixels/second) - independent of bird speed
 };
 
 // Game constants
@@ -44,12 +44,11 @@ class GameScene extends Phaser.Scene {
         this.isThrusting = false;
         this.distance = 0;
         this.distanceText = null;
-        this.backgroundImages = [];
-        this.bgTileWidth = 0;
+        this.backgroundSprite = null;
+        this.backgroundOffset = 0; // INDEPENDENT scroll counter - never changes speed
         this.forwardVelocity = PHYSICS.BASE_FORWARD_SPEED;
         this.cameraTargetX = 0;
         this.worldOffset = 0;
-        this.simpleBackgroundScroll = 0; // Just a simple counter that increases every frame
     }
 
     preload() {
@@ -84,27 +83,10 @@ class GameScene extends Phaser.Scene {
     }
 
     createBackground() {
-        // Simple 2-tile background system for infinite scrolling
-        this.backgroundImages = [];
-        
-        // Create exactly 2 background tiles
-        for (let i = 0; i < 2; i++) {
-            const bg = this.add.image(0, 0, 'background');
-            bg.setOrigin(0, 0); // Top-left origin for easier positioning
-            
-            // Scale to fit height
-            const heightScale = GAME.HEIGHT / bg.height;
-            bg.setScale(heightScale);
-            
-            // Position tiles side by side
-            bg.x = i * bg.displayWidth;
-            bg.y = 0;
-            
-            this.backgroundImages.push(bg);
-        }
-        
-        // Store the width for scrolling calculations
-        this.bgTileWidth = this.backgroundImages[0].displayWidth;
+        // Create a single tileSprite that repeats the background infinitely
+        // This is the simplest possible approach - let Phaser handle everything
+        this.backgroundSprite = this.add.tileSprite(0, 0, GAME.WIDTH, GAME.HEIGHT, 'background');
+        this.backgroundSprite.setOrigin(0, 0);
     }
 
     createBird() {
@@ -141,24 +123,25 @@ class GameScene extends Phaser.Scene {
 
     update(_, delta) {
         const deltaTime = delta / 1000;
+        const clampedDeltaTime = Math.min(deltaTime, 1/60); // Cap prevents first-frame mega-jump (delta>16ms common)
 
         // Apply physics based on current state
-        this.applyPhysics(deltaTime);
+        this.applyPhysics(clampedDeltaTime);
 
         // Update forward velocity based on bird state
-        this.updateForwardVelocity(deltaTime);
+        this.updateForwardVelocity(clampedDeltaTime);
 
         // Apply horizontal movement constraints
         this.constrainBirdPosition();
 
         // Update camera with smooth following
-        this.updateCamera(deltaTime);
+        this.updateCamera(clampedDeltaTime);
 
         // Update world scrolling and distance
-        this.updateWorldPosition(deltaTime);
+        this.updateWorldPosition(clampedDeltaTime);
 
-        // Ultra-simple background scrolling - just increase counter every frame
-        this.simpleBackgroundScroll += 2; // 2 pixels per frame = constant speed
+        // Update background with time-based consistent movement
+        this.backgroundOffset += BACKGROUND.CONSTANT_SCROLL_SPEED * clampedDeltaTime; // Fix: Use delta time for smooth first frame
 
         // Update background
         this.updateBackgroundScrolling();
@@ -213,14 +196,15 @@ class GameScene extends Phaser.Scene {
     }
 
     updateCamera(deltaTime) {
-        // Calculate target camera position based on bird position
-        this.cameraTargetX = this.bird.x - MOVEMENT.MIN_X;
+        // NEW: Camera follows the total distance flown, not the bird's screen X
+        this.cameraTargetX = this.worldOffset * 0.2;  // 0.2 gives nice parallax feel, adjust as you like
         
-        // Smooth camera following with lerp
-        const currentCameraX = this.cameras.main.scrollX;
-        const newCameraX = Phaser.Math.Linear(currentCameraX, this.cameraTargetX, MOVEMENT.CAMERA_LERP);
-        
-        this.cameras.main.scrollX = newCameraX;
+        // Smooth follow
+        this.cameras.main.scrollX = Phaser.Math.Linear(
+            this.cameras.main.scrollX,
+            this.cameraTargetX,
+            MOVEMENT.CAMERA_LERP
+        );
     }
 
     updateWorldPosition(deltaTime) {
@@ -233,17 +217,10 @@ class GameScene extends Phaser.Scene {
     }
 
     updateBackgroundScrolling() {
-        if (this.backgroundImages.length !== 2 || !this.bgTileWidth) return;
+        if (!this.backgroundSprite) return;
         
-        const tile1 = this.backgroundImages[0];
-        const tile2 = this.backgroundImages[1];
-        
-        // Dead simple: use the simple scroll counter, mod by tile width
-        const offset = this.simpleBackgroundScroll % this.bgTileWidth;
-        
-        // Position tiles
-        tile1.x = -offset;
-        tile2.x = this.bgTileWidth - offset;
+        // Back to tilePositionX approach
+        this.backgroundSprite.tilePositionX = this.backgroundOffset;
     }
 
     applyPhysics(deltaTime) {
