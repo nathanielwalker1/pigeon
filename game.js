@@ -23,9 +23,9 @@ const MOVEMENT = {
 
 // Background constants
 const BACKGROUND = {
-    IMAGE_PATH: 'assets/westvillage.jpg',  // Path to background image (easy to swap for testing)
+    IMAGE_PATH: 'assets/wv2.png',  // Path to background image (easy to swap for testing)
     PARALLAX_FACTOR: 0.5,                  // How much background moves relative to camera (0.5 = half speed)
-    SCALE: 1.0,                            // Scale factor for background image (1.0 = normal size)
+    SCALE: 0.35,                            // Scale factor for background image (1.0 = normal size)
     CONSTANT_SCROLL_SPEED: 130,             // Constant background scroll speed (pixels/second) - independent of bird speed
 };
 
@@ -83,10 +83,25 @@ class GameScene extends Phaser.Scene {
     }
 
     createBackground() {
-        // Create a single tileSprite that repeats the background infinitely
-        // This is the simplest possible approach - let Phaser handle everything
-        this.backgroundSprite = this.add.tileSprite(0, 0, GAME.WIDTH, GAME.HEIGHT, 'background');
+        // 1. Create a normal sprite first so we can measure the real image size
+        const temp = this.add.image(0, 0, 'background').setOrigin(0, 0);
+        
+        // 2. Calculate scale so the image fills the screen height EXACTLY
+        const scale = GAME.HEIGHT / temp.height;
+        
+        // 3. Destroy temp and create the real tileSprite with perfect dimensions
+        temp.destroy();
+        
+        this.backgroundSprite = this.add.tileSprite(
+            0, 0,
+            temp.width * 3,   // wide enough for smooth looping
+            temp.height,      // EXACT original height (no distortion)
+            'background'
+        );
+        
         this.backgroundSprite.setOrigin(0, 0);
+        this.backgroundSprite.setScale(scale);        // fills screen height perfectly
+        this.backgroundSprite.setScrollFactor(0);     // stays behind camera
     }
 
     createBird() {
@@ -219,7 +234,7 @@ class GameScene extends Phaser.Scene {
     updateBackgroundScrolling() {
         if (!this.backgroundSprite) return;
         
-        // Back to tilePositionX approach
+        // This is the ONLY line you need for perfect horizontal looping
         this.backgroundSprite.tilePositionX = this.backgroundOffset;
     }
 
